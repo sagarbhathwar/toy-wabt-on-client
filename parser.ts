@@ -45,7 +45,6 @@ export function traverseUniOp(op: string): UniOp {
 }
 
 export function traverseExpr(c: TreeCursor, s: string): Expr {
-  console.log(c.type.name);
   switch (c.type.name) {
     case "Number":
     case "Boolean":
@@ -128,9 +127,8 @@ export function traveseType(s: string): Type {
   }
 }
 
-export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | FuncDef {
-  console.log(c.node.type.name);
-  switch(c.node.type.name){
+export function traverseFnStmt(c: TreeCursor, s: string): Stmt | VarDef {
+  switch(c.node.type.name) {
     case "AssignStatement":
       c.firstChild(); // go to name
       const name = s.substring(c.from, c.to);
@@ -161,7 +159,6 @@ export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | F
           value: value
         }
       }
-    
     case "ExpressionStatement":
       c.firstChild();
       let childName = c.node.type.name;
@@ -195,13 +192,183 @@ export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | F
           expr: expr
         }
       }
-    case "FunctionDefinition":
+    case "ReturnStatement":
+      c.firstChild() // "return";
+      c.nextSibling(); // Expr
+      const expr = traverseExpr(c, s);
+      c.parent(); // Go back
       return {
-        tag: "func"
+        tag: "return",
+        expr: traverseExpr(c, s)
+      }
+    default:
+      throw Error(`Unsupported type ${c.node.type.name}`);
+  }
+}
+
+export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | FuncDef {
+  switch(c.node.type.name){
+    case "AssignStatement":
+      c.firstChild(); // go to name
+      const name = s.substring(c.from, c.to);
+      c.nextSibling(); // go to equals or :
+      if (s.substring(c.from, c.to)[0] == ":") { // VarDef
+        c.firstChild()
+        c.nextSibling();
+        const type = s.substring(c.from, c.to);
+        c.parent();
+        c.nextSibling(); // Equals
+        c.nextSibling(); // Literal
+        const value = s.substring(c.from, c.to);
+        const literal = traverseLiteral(value);
+        c.parent();
+        return {
+          tag: "vardef",
+          name,
+          type: traveseType(type),
+          literal
+        }
+      } else { // Stmt ("define")
+        c.nextSibling(); // go to value
+        const value = traverseExpr(c, s);
+        c.parent();
+        return {
+          tag: "define",
+          name: name,
+          value: value
+        }
+      }
+    case "ExpressionStatement":
+      c.firstChild();
+      let childName = c.node.type.name;
+      if((childName as any) === "CallExpression") { // Note(Joe): hacking around typescript here; it doesn't know about state
+        c.firstChild();
+        const callName = s.substring(c.from, c.to);
+        if (callName === "globals") {
+          c.parent();
+          c.parent();
+          return {
+            tag: "globals"
+          };
+        } else if (callName === "print") {
+          c.nextSibling(); // go to arglist
+          c.firstChild(); // go into arglist
+          c.nextSibling(); // find single argument in arglist
+          const arg = traverseExpr(c, s);
+          c.parent(); // pop arglist
+          c.parent(); // pop expressionstmt
+          return {
+            tag: "print",
+            // LOL TODO: not this
+            value: arg
+          };
+        }
+      } else {
+        const expr = traverseExpr(c, s);
+        c.parent(); // pop going into stmt
+        return {
+          tag: "expr",
+          expr: expr
+        }
+      }
+    
+      case "ExpressionStatement":
+        c.firstChild();
+        childName = c.node.type.name;
+        if((childName as any) === "CallExpression") { // Note(Joe): hacking around typescript here; it doesn't know about state
+          c.firstChild();
+          const callName = s.substring(c.from, c.to);
+          if (callName === "globals") {
+            c.parent();
+            c.parent();
+            return {
+              tag: "globals"
+            };
+          } else if (callName === "print") {
+            c.nextSibling(); // go to arglist
+            c.firstChild(); // go into arglist
+            c.nextSibling(); // find single argument in arglist
+            const arg = traverseExpr(c, s);
+            c.parent(); // pop arglist
+            c.parent(); // pop expressionstmt
+            return {
+              tag: "print",
+              // LOL TODO: not this
+              value: arg
+            };
+          }
+        } else {
+          const expr = traverseExpr(c, s);
+          c.parent(); // pop going into stmt
+          return {
+            tag: "expr",
+            expr: expr
+          }
+        }
+    case "FunctionDefinition":
+      c.firstChild(); // def
+      c.nextSibling(); // function name
+      const fnName = s.substring(c.from, c.to);
+      c.nextSibling(); // Param list
+      const params = s.substring(c.from + 1, c.to - 1).split(",");
+      c.nextSibling(); // Function body OR return type
+      let retType;
+      if (s.substring(c.from, c.from+2) == "->") {
+        // Parse for return type
+        c.firstChild(); // Return type
+        retType = traveseType(s.substring(c.from, c.to));
+        c.parent();
+        c.nextSibling();
+      } else {
+        // Somehow indicate return type as None
+      }
+      c.firstChild(); // colon
+      c.nextSibling(); // First statement in the body
+      // All next siblings are statements in function body
+      const stmts: Array<Stmt | VarDef> = [];
+      do {
+        stmts.push(traverseFnStmt(c, s));
+      } while(c.nextSibling());
+      c.parent();
+      c.nextSibling(); // Possible Return statement
+      const returnStmt = {
+        tag: "return",
+        expr: {}
+      };
+      if((c.node.type.name as any) === "ReturnStatement") {
+        c.firstChild(); // "return"
+        c.nextSibling() //  expr
+        if(c.from == c.to) {
+          returnStmt.expr = {
+            tag: "literal",
+            value: {tag: "None"}
+          }
+        }
+        else { // Expr
+          const expr = traverseExpr(c, s);
+          returnStmt.expr = expr 
+        }
+      } else {
+        returnStmt.expr = {
+          tag: "literal",
+          value: {tag: "None"}
+        } 
+      }
+      stmts.push(returnStmt as any);
+      return {
+        tag: "func",
+        params,
+        name: fnName,
+        retType,
+        stmts
       }
     default:
       throw new Error("Could not parse stmt at " + c.node.from + " " + c.node.to + ": " + s.substring(c.from, c.to));
   }
+}
+
+export function traverseArgList(c: TreeCursor, s:string) {
+
 }
 
 export function traverse(c: TreeCursor, s: string): any {
@@ -212,7 +379,6 @@ export function traverse(c: TreeCursor, s: string): any {
       do {
         stmts.push(traverseProgramStmt(c, s));
       } while (c.nextSibling())
-      console.log(stmts);
       return stmts;
     default:
       throw new Error("Could not parse program at " + c.node.from + " " + c.node.to);

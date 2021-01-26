@@ -10,8 +10,17 @@ export type VarDef = {
   literal: Literal
 }
 
+export type TypeDef = {
+  name: string,
+  type: Type
+}
+
 export type FuncDef = {
-  tag: "func"
+  tag: "func",
+  name: string,
+  params: Array<TypeDef>,
+  retType?: Type,
+  stmts: Array<VarDef | Stmt>
 }
 
 export type Stmt = {
@@ -32,6 +41,11 @@ export type Stmt = {
   |
   {
     tag: "globals"
+  }
+  |
+  {
+    tag: "return",
+    expr: Expr
   }
 
 export type Expr = {
