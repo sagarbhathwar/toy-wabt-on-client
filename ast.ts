@@ -1,3 +1,18 @@
+export type ProgramStmt = 
+{ tag: "vardef", value: VarDef }
+| {tag: "stmt", value: Stmt}
+| {tag: "fundef"}
+
+export type VarDef = {
+  tag: "vardef",
+  name: string,
+  type: Type,
+  literal: Literal
+}
+
+export type FuncDef = {
+  tag: "func"
+}
 
 export type Stmt = {
     tag: "define",
@@ -35,5 +50,20 @@ export type Expr = {
     tag: "id",
     name: string
   }
+  | {tag: "paren", expr: Expr}
+  | {tag: "uniop", op: UniOp, right: Expr}
+  | {tag: "literal", value: Literal};
 
-export enum Op { Plus, Minus } ;
+export type Literal = 
+  {tag: "None"} 
+| {tag: "True"} 
+| {tag: "False"} 
+| {tag: "Number", value: number}
+
+export type Number = {value: number}
+
+export enum UniOp {Minus, Not};
+
+export enum Op { Plus, Minus, Mul, Div, Mod, Eq, Ne, Lte, Gte, Lt, Gt, Is } ;
+
+export enum Type {Int, Bool};
