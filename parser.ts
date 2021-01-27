@@ -1,6 +1,6 @@
 import { parser } from "lezer-python";
 import { Tree, TreeCursor } from "lezer-tree";
-import { Expr, FuncDef, Literal, Stmt, Op, UniOp, VarDef, Type } from "./ast";
+import { Expr, FuncDef, Literal, Stmt, Op, UniOp, VarDef, Type, TypeDef } from "./ast";
 
 export function traverseOp(op: string): Op {
   switch (op) {
@@ -127,71 +127,97 @@ export function traveseType(s: string): Type {
   }
 }
 
+export function parseAssign(c: TreeCursor, s: string): Stmt | VarDef {
+  c.firstChild(); // go to name
+  const name = s.substring(c.from, c.to);
+  c.nextSibling(); // go to equals or :
+  if (s.substring(c.from, c.to)[0] == ":") { // VarDef
+    c.firstChild()
+    c.nextSibling();
+    const type = s.substring(c.from, c.to);
+    c.parent();
+    c.nextSibling(); // Equals
+    c.nextSibling(); // Literal
+    const value = s.substring(c.from, c.to);
+    const literal = traverseLiteral(value);
+    c.parent();
+    return {
+      tag: "vardef",
+      name,
+      type: traveseType(type),
+      literal
+    }
+  } else { // Stmt ("define")
+    c.nextSibling(); // go to value
+    const value = traverseExpr(c, s);
+    c.parent();
+    return {
+      tag: "define",
+      name: name,
+      value: value
+    }
+  }
+}
+
+export function parseExpr(c: TreeCursor, s: string): Stmt {
+  c.firstChild();
+  let childName = c.node.type.name;
+  if((childName as any) === "CallExpression") { // Note(Joe): hacking around typescript here; it doesn't know about state
+    c.firstChild();
+    const callName = s.substring(c.from, c.to);
+    if (callName === "globals") {
+      c.parent();
+      c.parent();
+      return {
+        tag: "globals"
+      };
+    } else if (callName === "print") {
+      c.nextSibling(); // go to arglist
+      c.firstChild(); // go into arglist
+      c.nextSibling(); // find single argument in arglist
+      const arg = traverseExpr(c, s);
+      c.parent(); // pop arglist
+      c.parent(); // pop expressionstmt
+      return {
+        tag: "print",
+        // LOL TODO: not this
+        value: arg
+      };
+    } else {
+      c.nextSibling(); // arglist
+      c.firstChild(); // "("
+      c.nextSibling();
+      const args = []
+      while(s.substring(c.from, c.to) !== ")") {
+        args.push(traverseExpr(c, s));
+        c.nextSibling();
+        if(s.substring(c.from, c.to) === ",") {
+          c.nextSibling();
+        }
+      }
+      console.log(args);
+      return {
+        tag: "call",
+        name: callName,
+        args
+      }
+    }
+  } else {
+    const expr = traverseExpr(c, s);
+    c.parent(); // pop going into stmt
+    return {
+      tag: "expr",
+      expr: expr
+    }
+  }
+}
+
 export function traverseFnStmt(c: TreeCursor, s: string): Stmt | VarDef {
   switch(c.node.type.name) {
     case "AssignStatement":
-      c.firstChild(); // go to name
-      const name = s.substring(c.from, c.to);
-      c.nextSibling(); // go to equals or :
-      if (s.substring(c.from, c.to)[0] == ":") { // VarDef
-        c.firstChild()
-        c.nextSibling();
-        const type = s.substring(c.from, c.to);
-        c.parent();
-        c.nextSibling(); // Equals
-        c.nextSibling(); // Literal
-        const value = s.substring(c.from, c.to);
-        const literal = traverseLiteral(value);
-        c.parent();
-        return {
-          tag: "vardef",
-          name,
-          type: traveseType(type),
-          literal
-        }
-      } else { // Stmt ("define")
-        c.nextSibling(); // go to value
-        const value = traverseExpr(c, s);
-        c.parent();
-        return {
-          tag: "define",
-          name: name,
-          value: value
-        }
-      }
+      return parseAssign(c, s);
     case "ExpressionStatement":
-      c.firstChild();
-      let childName = c.node.type.name;
-      if((childName as any) === "CallExpression") { // Note(Joe): hacking around typescript here; it doesn't know about state
-        c.firstChild();
-        const callName = s.substring(c.from, c.to);
-        if (callName === "globals") {
-          c.parent();
-          c.parent();
-          return {
-            tag: "globals"
-          };
-        } else if (callName === "print") {
-          c.nextSibling(); // go to arglist
-          c.firstChild(); // go into arglist
-          c.nextSibling(); // find single argument in arglist
-          const arg = traverseExpr(c, s);
-          c.parent(); // pop arglist
-          c.parent(); // pop expressionstmt
-          return {
-            tag: "print",
-            // LOL TODO: not this
-            value: arg
-          };
-        }
-      } else {
-        const expr = traverseExpr(c, s);
-        c.parent(); // pop going into stmt
-        return {
-          tag: "expr",
-          expr: expr
-        }
-      }
+      return parseExpr(c, s);
     case "ReturnStatement":
       c.firstChild() // "return";
       c.nextSibling(); // Expr
@@ -209,108 +235,15 @@ export function traverseFnStmt(c: TreeCursor, s: string): Stmt | VarDef {
 export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | FuncDef {
   switch(c.node.type.name){
     case "AssignStatement":
-      c.firstChild(); // go to name
-      const name = s.substring(c.from, c.to);
-      c.nextSibling(); // go to equals or :
-      if (s.substring(c.from, c.to)[0] == ":") { // VarDef
-        c.firstChild()
-        c.nextSibling();
-        const type = s.substring(c.from, c.to);
-        c.parent();
-        c.nextSibling(); // Equals
-        c.nextSibling(); // Literal
-        const value = s.substring(c.from, c.to);
-        const literal = traverseLiteral(value);
-        c.parent();
-        return {
-          tag: "vardef",
-          name,
-          type: traveseType(type),
-          literal
-        }
-      } else { // Stmt ("define")
-        c.nextSibling(); // go to value
-        const value = traverseExpr(c, s);
-        c.parent();
-        return {
-          tag: "define",
-          name: name,
-          value: value
-        }
-      }
+      return parseAssign(c, s);
     case "ExpressionStatement":
-      c.firstChild();
-      let childName = c.node.type.name;
-      if((childName as any) === "CallExpression") { // Note(Joe): hacking around typescript here; it doesn't know about state
-        c.firstChild();
-        const callName = s.substring(c.from, c.to);
-        if (callName === "globals") {
-          c.parent();
-          c.parent();
-          return {
-            tag: "globals"
-          };
-        } else if (callName === "print") {
-          c.nextSibling(); // go to arglist
-          c.firstChild(); // go into arglist
-          c.nextSibling(); // find single argument in arglist
-          const arg = traverseExpr(c, s);
-          c.parent(); // pop arglist
-          c.parent(); // pop expressionstmt
-          return {
-            tag: "print",
-            // LOL TODO: not this
-            value: arg
-          };
-        }
-      } else {
-        const expr = traverseExpr(c, s);
-        c.parent(); // pop going into stmt
-        return {
-          tag: "expr",
-          expr: expr
-        }
-      }
-    
-      case "ExpressionStatement":
-        c.firstChild();
-        childName = c.node.type.name;
-        if((childName as any) === "CallExpression") { // Note(Joe): hacking around typescript here; it doesn't know about state
-          c.firstChild();
-          const callName = s.substring(c.from, c.to);
-          if (callName === "globals") {
-            c.parent();
-            c.parent();
-            return {
-              tag: "globals"
-            };
-          } else if (callName === "print") {
-            c.nextSibling(); // go to arglist
-            c.firstChild(); // go into arglist
-            c.nextSibling(); // find single argument in arglist
-            const arg = traverseExpr(c, s);
-            c.parent(); // pop arglist
-            c.parent(); // pop expressionstmt
-            return {
-              tag: "print",
-              // LOL TODO: not this
-              value: arg
-            };
-          }
-        } else {
-          const expr = traverseExpr(c, s);
-          c.parent(); // pop going into stmt
-          return {
-            tag: "expr",
-            expr: expr
-          }
-        }
+      return parseExpr(c, s);
     case "FunctionDefinition":
       c.firstChild(); // def
       c.nextSibling(); // function name
       const fnName = s.substring(c.from, c.to);
       c.nextSibling(); // Param list
-      const params = s.substring(c.from + 1, c.to - 1).split(",");
+      const params = traverseParamList(c, s);
       c.nextSibling(); // Function body OR return type
       let retType;
       if (s.substring(c.from, c.from+2) == "->") {
@@ -355,6 +288,8 @@ export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | F
         } 
       }
       stmts.push(returnStmt as any);
+      c.parent();
+      c.parent();
       return {
         tag: "func",
         params,
@@ -367,8 +302,27 @@ export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | F
   }
 }
 
-export function traverseArgList(c: TreeCursor, s:string) {
-
+export function traverseParamList(c: TreeCursor, s:string): Array<TypeDef> {
+  const paramList: Array<TypeDef> = [];
+  c.firstChild(); // "("
+  c.nextSibling();
+  while(s.substring(c.from, c.to) != ")") {
+    c.firstChild();
+    const paramName = s.substring(c.from, c.to);
+    c.nextSibling(); // ":<type>"
+    c.firstChild(); // ":"
+    c.nextSibling(); // type
+    const type = traveseType(s.substring(c.from, c.to));
+    c.parent(); // Go back to ":<type>"
+    c.nextSibling(); // ","
+    c.nextSibling(); // Next param
+    paramList.push({
+      name: paramName,
+      type
+    })
+  }
+  c.parent();
+  return paramList;
 }
 
 export function traverse(c: TreeCursor, s: string): any {

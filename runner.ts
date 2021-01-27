@@ -38,10 +38,12 @@ export async function run(source : string, config: any) : Promise<[any, compiler
     (func $print (import "imports" "imported_func") (param i32))
     (func $printglobal (import "imports" "print_global_func") (param i32) (param i32))
     (import "js" "memory" (memory 1))
+    ${compiled.fnDef}
     (func (export "exported_func") ${returnType}
       ${compiled.wasmSource}
     )
   )`;
+  console.log(wasmSource);
   const myModule = wabtInterface.parseWat("test.wat", wasmSource);
   var asBinary = myModule.toBinary({});
   var wasmModule = await WebAssembly.instantiate(asBinary.buffer, importObject);

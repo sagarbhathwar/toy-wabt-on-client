@@ -1,5 +1,5 @@
 import { stringInput } from "lezer-tree";
-import { Stmt, Expr, Op, UniOp, VarDef } from "./ast";
+import { Stmt, Expr, Op, UniOp, VarDef, FuncDef } from "./ast";
 import { parse } from "./parser";
 
 // https://learnxinyminutes.com/docs/wasm/
@@ -32,15 +32,20 @@ export function augmentEnv(env: GlobalEnv, stmts: Array<Stmt | VarDef>) : Global
 
 type CompileResult = {
   wasmSource: string,
-  newEnv: GlobalEnv
+  newEnv: GlobalEnv,
+  fnDef: string
 };
 
 export function compile(source: string, env: GlobalEnv) : CompileResult {
   const ast = parse(source);
   const withDefines = augmentEnv(env, ast);
-  const commandGroups = ast.map((stmt) => codeGen(stmt, withDefines));
+  const fn = [].concat.apply([], ast.filter(stmt => stmt.tag as any === "func")
+                .map(stmt => codeGen(stmt, withDefines)));
+  const commandGroups = ast.filter(stmt => stmt.tag as any !== "func")
+                           .map((stmt) => codeGen(stmt, withDefines));
   const commands = [].concat.apply([], commandGroups);
   return {
+    fnDef: fn,
     wasmSource: commands.join("\n"),
     newEnv: withDefines
   };
@@ -51,12 +56,38 @@ function envLookup(env : GlobalEnv, name : string) : number {
   return (env.globals.get(name) * 4); // 4-byte values
 }
 
-function codeGen(stmt: Stmt, env: GlobalEnv) : Array<string> {
+function codeGenFunc(fn: FuncDef, env: GlobalEnv) : Array<string> {
+  let paramList = "";
+  if(fn.params.length != 0) {
+    paramList = fn.params.reduce((acc, curr) => `${acc} (param $${curr.name} i32)`, "");
+  } else {
+
+  }
+  if(fn.retType) {
+    paramList = `${paramList} (result i32)`;
+  }
+  paramList = paramList.trim();
+  const fnBody = fn.stmts.slice(0, -1)
+                .map((s) => codeGen(s, env))
+                .flat()
+                .reduce((acc, curr) => `${acc}\n\t\t${curr}`, "");
+  return [`(func $${fn.name} ${paramList}${fnBody})`]
+}
+
+function codeGen(stmt: any, env: GlobalEnv) : Array<string> {
   switch(stmt.tag) {
+    case "func":
+      // Generate code for function
+      return codeGenFunc(stmt, env);
     case "define":
-      const locationToStore = [`(i32.const ${envLookup(env, stmt.name)}) ;; ${stmt.name}`];
-      var valStmts = codeGenExpr(stmt.value, env);
-      return locationToStore.concat(valStmts).concat([`(i32.store)`]);
+      if(env.globals.get(stmt.name)) {
+        const locationToStore = [`(i32.const ${envLookup(env, stmt.name)}) ;; ${stmt.name}`];
+        var valStmts = codeGenExpr(stmt.value, env);
+        return locationToStore.concat(valStmts).concat([`(i32.store)`]);
+      } else {
+        var valStmts = codeGenExpr(stmt.value, env);
+        return valStmts.concat([`(local.set $${stmt.name})`]);
+      }
     case "print":
       var valStmts = codeGenExpr(stmt.value, env);
       return valStmts.concat([
@@ -64,6 +95,13 @@ function codeGen(stmt: Stmt, env: GlobalEnv) : Array<string> {
       ]);      
     case "expr":
       return codeGenExpr(stmt.expr, env);
+    case "call":
+      const argStmts = stmt.args
+      .map((arg: Expr) => codeGenExpr(arg, env))
+      .concat([`call $${stmt.name}`])
+      .join("\n");
+      console.log(argStmts);
+      return argStmts;
     case "globals":
       var globalStmts : Array<string> = [];
       env.globals.forEach((pos, name) => {
@@ -95,7 +133,11 @@ function codeGenExpr(expr : Expr, env: GlobalEnv) : Array<string> {
     case "paren":
       return codeGenExpr(expr.expr, env);
     case "id":
-      return [`(i32.const ${envLookup(env, expr.name)})`, `i32.load `]
+      if(env.globals.get(expr.name)) {
+        return [`(i32.const ${envLookup(env, expr.name)})`, `i32.load `]
+      } else {
+        return [`(get_local $${expr.name})`]
+      }
     case "op":
       return codeGenOp(expr.op, expr.left, expr.right, env);
     case "uniop":

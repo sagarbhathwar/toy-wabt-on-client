@@ -19,6 +19,7 @@ export type FuncDef = {
   tag: "func",
   name: string,
   params: Array<TypeDef>,
+  varDefs?: Array<VarDef>,
   retType?: Type,
   stmts: Array<VarDef | Stmt>
 }
@@ -46,6 +47,12 @@ export type Stmt = {
   {
     tag: "return",
     expr: Expr
+  }
+  |
+  {
+    tag: "call",
+    name: string,
+    args: Array<Expr>
   }
 
 export type Expr = {
