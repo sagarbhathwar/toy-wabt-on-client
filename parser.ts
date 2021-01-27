@@ -50,7 +50,7 @@ export function traverseExpr(c: TreeCursor, s: string): Expr {
     case "Boolean":
     case "None":
       const l = s.substring(c.from, c.to);
-      const literal: Literal = traverseLiteral(l)
+      const literal: Literal = traverseLiteral(l);
       return {
         tag: "literal",
         value: literal
@@ -139,13 +139,12 @@ export function parseAssign(c: TreeCursor, s: string): Stmt | VarDef {
     c.nextSibling(); // Equals
     c.nextSibling(); // Literal
     const value = s.substring(c.from, c.to);
-    const literal = traverseLiteral(value);
     c.parent();
     return {
       tag: "vardef",
       name,
       type: traveseType(type),
-      literal
+      value: traverseLiteral(value)
     }
   } else { // Stmt ("define")
     c.nextSibling(); // go to value
@@ -195,7 +194,6 @@ export function parseExpr(c: TreeCursor, s: string): Stmt {
           c.nextSibling();
         }
       }
-      console.log(args);
       return {
         tag: "call",
         name: callName,
@@ -219,13 +217,14 @@ export function traverseFnStmt(c: TreeCursor, s: string): Stmt | VarDef {
     case "ExpressionStatement":
       return parseExpr(c, s);
     case "ReturnStatement":
+      console.log(s.substring(c.from, c.to))
       c.firstChild() // "return";
       c.nextSibling(); // Expr
       const expr = traverseExpr(c, s);
       c.parent(); // Go back
       return {
         tag: "return",
-        expr: traverseExpr(c, s)
+        expr
       }
     default:
       throw Error(`Unsupported type ${c.node.type.name}`);
@@ -259,15 +258,29 @@ export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | F
       c.nextSibling(); // First statement in the body
       // All next siblings are statements in function body
       const stmts: Array<Stmt | VarDef> = [];
-      do {
+      const varDefs: Array<Stmt | VarDef> = []; // Hack
+
+      // Loop over any var_def
+      let currStmt = traverseFnStmt(c, s);
+      while(currStmt.tag == "vardef") {
+        varDefs.push(currStmt);
+        c.nextSibling();
+        currStmt = traverseFnStmt(c, s)
+      }
+
+      // At this point, it's just statements
+      stmts.push(currStmt);
+      while(c.nextSibling()) {
         stmts.push(traverseFnStmt(c, s));
-      } while(c.nextSibling());
+      }
+
       c.parent();
       c.nextSibling(); // Possible Return statement
       const returnStmt = {
         tag: "return",
         expr: {}
       };
+
       if((c.node.type.name as any) === "ReturnStatement") {
         c.firstChild(); // "return"
         c.nextSibling() //  expr
@@ -281,6 +294,8 @@ export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | F
           const expr = traverseExpr(c, s);
           returnStmt.expr = expr 
         }
+        c.parent(); // Back to return
+        console.log(s.substring(c.from, c.to))
       } else {
         returnStmt.expr = {
           tag: "literal",
@@ -288,13 +303,14 @@ export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | F
         } 
       }
       stmts.push(returnStmt as any);
-      c.parent();
-      c.parent();
+      c.parent(); // Back to function
+      c.parent(); // Back to program
       return {
         tag: "func",
         params,
         name: fnName,
         retType,
+        varDefs,
         stmts
       }
     default:

@@ -7,7 +7,7 @@ export type VarDef = {
   tag: "vardef",
   name: string,
   type: Type,
-  literal: Literal
+  value: Literal
 }
 
 export type TypeDef = {
@@ -19,7 +19,7 @@ export type FuncDef = {
   tag: "func",
   name: string,
   params: Array<TypeDef>,
-  varDefs?: Array<VarDef>,
+  varDefs?: Array<VarDef | Stmt>,
   retType?: Type,
   stmts: Array<VarDef | Stmt>
 }

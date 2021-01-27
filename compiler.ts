@@ -60,14 +60,25 @@ function codeGenFunc(fn: FuncDef, env: GlobalEnv) : Array<string> {
   let paramList = "";
   if(fn.params.length != 0) {
     paramList = fn.params.reduce((acc, curr) => `${acc} (param $${curr.name} i32)`, "");
-  } else {
-
-  }
+  } 
   if(fn.retType) {
     paramList = `${paramList} (result i32)`;
   }
+  
+  // Parse only vardefs
+  let fnBody = "";
+  fn.varDefs.forEach(v => {
+    fnBody = `${fnBody}\n(local $${(v as any).name} i32)`
+  })
+  fn.varDefs.forEach(v => {
+    fnBody = `${fnBody}
+    (i32.const ${(v as any).value.value})
+    (set_local $${(v as any).name})`
+  })
+
+  
   paramList = paramList.trim();
-  const fnBody = fn.stmts.slice(0, -1)
+  fnBody += fn.stmts.slice(0, -1)
                 .map((s) => codeGen(s, env))
                 .flat()
                 .reduce((acc, curr) => `${acc}\n\t\t${curr}`, "");
@@ -85,7 +96,7 @@ function codeGen(stmt: any, env: GlobalEnv) : Array<string> {
         var valStmts = codeGenExpr(stmt.value, env);
         return locationToStore.concat(valStmts).concat([`(i32.store)`]);
       } else {
-        var valStmts = codeGenExpr(stmt.value, env);
+        let valStmts = codeGenExpr(stmt.value, env);
         return valStmts.concat([`(local.set $${stmt.name})`]);
       }
     case "print":
@@ -100,7 +111,6 @@ function codeGen(stmt: any, env: GlobalEnv) : Array<string> {
       .map((arg: Expr) => codeGenExpr(arg, env))
       .concat([`call $${stmt.name}`])
       .join("\n");
-      console.log(argStmts);
       return argStmts;
     case "globals":
       var globalStmts : Array<string> = [];
@@ -112,7 +122,15 @@ function codeGen(stmt: any, env: GlobalEnv) : Array<string> {
           `(call $printglobal)`
         );
       });
-      return globalStmts;  
+      return globalStmts;
+    case "vardef":
+      // TODO: 1) Store type 2) Check for existence
+      const init = [`(local $${stmt.name} i32)`];
+      const exprCode = codeGenExpr({tag: "literal", value: stmt.value}, env);
+      const set = [`(set_local $${stmt.name})`];
+      return init.concat(exprCode).concat(set);
+    default:
+      return []; 
   }
 }
 
