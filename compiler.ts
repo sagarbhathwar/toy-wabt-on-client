@@ -151,6 +151,8 @@ function codeGen(stmt: any, env: GlobalEnv) : Array<string> {
         let valStmts = codeGenExpr(stmt.value, env);
         return valStmts.concat([`(local.set $${stmt.name})`]);
       }
+    case "return":
+      return codeGenExpr(stmt.expr, env);
     case "if":
       return codeGenIf(stmt, env);
     case "while":
@@ -212,11 +214,10 @@ function codeGenExpr(expr : Expr, env: GlobalEnv) : Array<string> {
       }
     }
     case "call":
-      console.log(expr.isStandalone);
       const argStmts = expr.args
       .map((arg: Expr) => codeGenExpr(arg, env).join("\n"))
       .concat([`call $${expr.name}`])
-      .join("\n") + `${expr.isStandalone && expr.name !== "print" ? "\n(local.set $last)" : ""}`;
+      .join("\n");
       return [argStmts];
     case "paren":
       return codeGenExpr(expr.expr, env);

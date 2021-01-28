@@ -62,8 +62,7 @@ export type Expr = {
   {
     tag: "call",
     name: string,
-    args: Array<Expr>,
-    isStandalone: boolean
+    args: Array<Expr>
   };
 
 export type Literal = 

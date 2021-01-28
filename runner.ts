@@ -40,7 +40,6 @@ export async function run(source : string, config: any) : Promise<[any, compiler
     (import "js" "memory" (memory 1))
     ${compiled.fnDef}
     (func (export "exported_func") ${returnType}
-      (local $last i32)
       ${compiled.varDefs}
       ${compiled.wasmSource}
     )
