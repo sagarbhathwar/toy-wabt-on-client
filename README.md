@@ -15,4 +15,6 @@
     Variable definitions inside functions is declared using the "local $<varName>" instruction and accessed using "get_local $<varName>" instruction
     compiler.ts > codeGenFunc
 
-3. 
+3. Added a "print" inside the while loop. "Logged from WASM" indefinitely. Web page freezes, only solution is to forcefully close it
+
+4. 

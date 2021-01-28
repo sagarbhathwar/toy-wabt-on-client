@@ -3,3 +3,18 @@ def f():
 def g(x:int):
   return x
 g(f())
+
+def f():
+  print(20)
+def g():
+  f()
+g()
+
+x:int = 10
+y:int = 0
+def f(z:int):
+  print(z+2)
+while x > 0:
+  f(x)
+  y = f(x)
+  x = x - 1

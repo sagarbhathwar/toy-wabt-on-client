@@ -212,10 +212,11 @@ function codeGenExpr(expr : Expr, env: GlobalEnv) : Array<string> {
       }
     }
     case "call":
+      console.log(expr.isStandalone);
       const argStmts = expr.args
       .map((arg: Expr) => codeGenExpr(arg, env).join("\n"))
       .concat([`call $${expr.name}`])
-      .join("\n");
+      .join("\n") + `${expr.isStandalone && expr.name !== "print" ? "\n(local.set $last)" : ""}`;
       return [argStmts];
     case "paren":
       return codeGenExpr(expr.expr, env);

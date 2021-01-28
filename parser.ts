@@ -111,10 +111,12 @@ export function traverseExpr(c: TreeCursor, s: string): Expr {
       c.parent();
       c.parent();
       c.parent();
+      let isStandalone = c.node.type.name === "ExpressionStatement";
       return {
         tag: "call",
         name: callName,
-        args
+        args,
+        isStandalone
       }
     default:
       throw new Error("Could not parse expr at " + c.from + " " + c.to + ": " + s.substring(c.from, c.to));
@@ -149,7 +151,6 @@ export function traveseType(s: string): Type {
 }
 
 export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | FuncDef {
-  console.log(c.node.type.name);
   switch(c.node.type.name){
     case "AssignStatement":
       c.firstChild(); // go to name
@@ -201,12 +202,14 @@ export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | F
         c.parent();
         c.parent();
         c.parent();
+        let isStandalone = c.node.type.name === "ExpressionStatement";
         return {
           tag:"expr",
           expr: {
             tag: "call",
             name: callName,
-            args
+            args,
+            isStandalone
         }
         }
       } else {
@@ -324,7 +327,6 @@ export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | F
 
       }
       c.parent();
-      console.log(s.substring(c.from, c.to));
       return {
         tag: "if",
         condition,

@@ -25,7 +25,6 @@ export async function run(source : string, config: any) : Promise<[any, compiler
   const wabtInterface = await wabt();
   const parsed = parse(source);
   var returnType = "";
-  console.log(parsed);
   if(parsed[parsed.length - 1].tag === "expr") {
     returnType = "(result i32)";
   }
@@ -41,6 +40,7 @@ export async function run(source : string, config: any) : Promise<[any, compiler
     (import "js" "memory" (memory 1))
     ${compiled.fnDef}
     (func (export "exported_func") ${returnType}
+      (local $last i32)
       ${compiled.varDefs}
       ${compiled.wasmSource}
     )
