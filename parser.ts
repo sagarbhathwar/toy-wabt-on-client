@@ -149,83 +149,76 @@ export function traveseType(s: string): Type {
   }
 }
 
-export function parseAssign(c: TreeCursor, s: string): Stmt | VarDef {
-  c.firstChild(); // go to name
-  const name = s.substring(c.from, c.to);
-  c.nextSibling(); // go to equals or :
-  if (s.substring(c.from, c.to)[0] == ":") { // VarDef
-    c.firstChild()
-    c.nextSibling();
-    const type = s.substring(c.from, c.to);
-    c.parent();
-    c.nextSibling(); // Equals
-    c.nextSibling(); // Literal
-    const value = s.substring(c.from, c.to);
-    c.parent();
-    return {
-      tag: "vardef",
-      name,
-      type: traveseType(type),
-      value: traverseLiteral(value)
-    }
-  } else { // Stmt ("define")
-    c.nextSibling(); // go to value
-    const value = traverseExpr(c, s);
-    c.parent();
-    return {
-      tag: "define",
-      name: name,
-      value: value
-    }
-  }
-}
-
-export function parseExpr(c: TreeCursor, s: string): Stmt {
-  c.firstChild();
-  let childName = c.node.type.name;
-  if((childName as any) === "CallExpression") { // Note(Joe): hacking around typescript here; it doesn't know about state
-    
-    c.firstChild();
-    const callName = s.substring(c.from, c.to);
-    c.nextSibling(); // arglist
-    c.firstChild(); // "("
-    c.nextSibling();
-    const args = [];
-    while(s.substring(c.from, c.to) !== ")") {
-      args.push(traverseExpr(c, s));
-      c.nextSibling();
-      if(s.substring(c.from, c.to) === ",") {
-        c.nextSibling();
-      }
-    }
-    c.parent();
-    c.parent();
-    c.parent();
-    console.log(s.substring(c.from, c.to));
-    return {
-      tag:"expr",
-      expr: {
-        tag: "call",
-        name: callName,
-        args
-     }
-    }
-  } else {
-    const expr = traverseExpr(c, s);
-    c.parent(); // pop going into stmt
-    return {
-      tag: "expr",
-      expr: expr
-    }
-  }
-}
-
-export function traverseFnStmt(c: TreeCursor, s: string): Stmt | VarDef {
-  switch(c.node.type.name) {
+export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | FuncDef {
+  console.log(c.node.type.name);
+  switch(c.node.type.name){
     case "AssignStatement":
-      return parseAssign(c, s);
+      c.firstChild(); // go to name
+      const name = s.substring(c.from, c.to);
+      c.nextSibling(); // go to equals or :
+      if (s.substring(c.from, c.to)[0] == ":") { // VarDef
+        c.firstChild()
+        c.nextSibling();
+        const type = s.substring(c.from, c.to);
+        c.parent();
+        c.nextSibling(); // Equals
+        c.nextSibling(); // Literal
+        const value = s.substring(c.from, c.to);
+        c.parent();
+        return {
+          tag: "vardef",
+          name,
+          type: traveseType(type),
+          value: traverseLiteral(value)
+        }
+      } else { // Stmt ("define")
+        c.nextSibling(); // go to value
+        const value = traverseExpr(c, s);
+        c.parent();
+        return {
+          tag: "define",
+          name: name,
+          value: value
+        }
+      }
     case "ExpressionStatement":
-      return parseExpr(c, s);
+      c.firstChild();
+      let childName = c.node.type.name;
+      if((childName as any) === "CallExpression") { // Note(Joe): hacking around typescript here; it doesn't know about state
+        
+        c.firstChild();
+        const callName = s.substring(c.from, c.to);
+        c.nextSibling(); // arglist
+        c.firstChild(); // "("
+        c.nextSibling();
+        const args = [];
+        while(s.substring(c.from, c.to) !== ")") {
+          args.push(traverseExpr(c, s));
+          c.nextSibling();
+          if(s.substring(c.from, c.to) === ",") {
+            c.nextSibling();
+          }
+        }
+        c.parent();
+        c.parent();
+        c.parent();
+        console.log(s.substring(c.from, c.to));
+        return {
+          tag:"expr",
+          expr: {
+            tag: "call",
+            name: callName,
+            args
+        }
+        }
+      } else {
+        const expr = traverseExpr(c, s);
+        c.parent(); // pop going into stmt
+        return {
+          tag: "expr",
+          expr: expr
+        }
+      }
     case "ReturnStatement":
       c.firstChild() // "return";
       c.nextSibling(); // Expr
@@ -235,18 +228,6 @@ export function traverseFnStmt(c: TreeCursor, s: string): Stmt | VarDef {
         tag: "return",
         expr
       }
-    default:
-      throw Error(`Unsupported type ${c.node.type.name}`);
-  }
-}
-
-export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | FuncDef {
-  console.log(c.node.type.name);
-  switch(c.node.type.name){
-    case "AssignStatement":
-      return parseAssign(c, s);
-    case "ExpressionStatement":
-      return parseExpr(c, s);
     case "FunctionDefinition":
       c.firstChild(); // def
       c.nextSibling(); // function name
@@ -271,11 +252,11 @@ export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | F
       const varDefs: Array<Stmt | VarDef> = []; // Hack
 
       do {
-        const stmt = traverseFnStmt(c, s);
+        const stmt = traverseProgramStmt(c, s);
         if(stmt.tag === "vardef") {
           varDefs.push(stmt)
         } else {
-            stmts.push(stmt);
+            stmts.push(stmt as any);
             if(stmt.tag === "return") {
             break
           }
@@ -346,15 +327,6 @@ export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | F
 
       }
       c.parent();
-      console.log(
-        {
-          tag: "if",
-          condition,
-          ifStmts,
-          elifCondition,
-          elifStmts,
-          elseStmts
-        })
       return {
         tag: "if",
         condition,

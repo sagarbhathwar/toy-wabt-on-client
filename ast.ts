@@ -31,7 +31,6 @@ export type Stmt =
       tag: "if",
       condition: Expr,
       ifStmts: Array<Stmt>,
-      elif?: Expr,
       elifCondition?: Expr,
       elifStmts?: Array<Stmt>,
       elseStmts?: Array<Stmt>

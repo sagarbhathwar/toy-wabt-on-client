@@ -95,19 +95,19 @@ function codeGenFunc(fn: FuncDef, env: GlobalEnv) : Array<string> {
 function codeGenIf(stmt: any, env: GlobalEnv) : Array<string> {
   const {ifStmts, condition, elifStmts, elifCondition, elseStmts} = stmt;
   let code = `(if(result)(i32.eq ${codeGenExpr(condition, env).join("\n")} (i32.const 1))
-                (then ${ifStmts.map((s: any) => codeGen(s, env)).join("\n")})`
-  if(elifCondition || elseStmts) {
+                (then ${ifStmts.map((s: any) => codeGen(s, env).join("\n")).join("\n")})`
+  if(elifCondition || elseStmts.length > 0) {
     code += "(else"
     if(elifCondition) {
       code += `(if (result)(i32.eq ${codeGenExpr(elifCondition, env).join("\n")} (i32.const 1))
-                  (then ${elifStmts.map((s: any) => codeGen(s, env)).join("\n")})
+                  (then ${elifStmts.map((s: any) => codeGen(s, env).join("\n")).join("\n")})
               `;
     }
-    if(elseStmts && !elifCondition) {
+    if(elseStmts.length > 0 && !elifCondition) {
       // Just else
-      code += `(then ${elseStmts.map((s: any) => codeGen(s, env)).join("\n")})`
+      code += ` ${elseStmts.map((s: any) => codeGen(s, env).join("\n")).join("\n")}`
     } else if(elseStmts && elifCondition) {
-      code += `(else ${elseStmts.map((s: any) => codeGen(s, env)).join("\n")})`
+      code += `(else ${elseStmts.map((s: any) => codeGen(s, env).join("\n")).join("\n")})`
     }
     code += ")"
     if(elifCondition) {
