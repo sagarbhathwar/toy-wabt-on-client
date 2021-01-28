@@ -1,0 +1,5 @@
+def f():
+  return 2
+def g(x:int):
+  return x
+g(f())

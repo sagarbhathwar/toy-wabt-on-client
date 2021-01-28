@@ -1,5 +1,5 @@
 import { stringInput } from "lezer-tree";
-import { Stmt, Expr, Op, UniOp, VarDef, FuncDef } from "./ast";
+import { Stmt, Expr, Literal, Op, UniOp, VarDef, FuncDef } from "./ast";
 import { parse } from "./parser";
 
 // https://learnxinyminutes.com/docs/wasm/
@@ -33,6 +33,7 @@ export function augmentEnv(env: GlobalEnv, stmts: Array<Stmt | VarDef>) : Global
 type CompileResult = {
   wasmSource: string,
   newEnv: GlobalEnv,
+  varDefs: string,
   fnDef: string
 };
 
@@ -40,14 +41,20 @@ export function compile(source: string, env: GlobalEnv) : CompileResult {
   const ast = parse(source);
   const withDefines = augmentEnv(env, ast);
   const fn = [].concat.apply([], ast.filter(stmt => stmt.tag as any === "func")
-                .map(stmt => codeGen(stmt, withDefines)));
-  const commandGroups = ast.filter(stmt => stmt.tag as any !== "func")
+                .map(stmt => codeGen(stmt, withDefines))).join("\n");
+  let varDefs = [].concat.apply([], ast.filter(stmt => stmt.tag as any == "vardef")
+                .map(stmt => `(local $${(stmt as any).name} i32)`));
+  varDefs = varDefs.concat(ast.filter(stmt => stmt.tag as any == "vardef")
+  .map(stmt => `${getValue((stmt as any).value)} (set_local $${(stmt as any).name})`))
+  .join("\n");      
+  const commandGroups = ast.filter(stmt => stmt.tag as any !== "func" && stmt.tag as any !== "vardef")
                            .map((stmt) => codeGen(stmt, withDefines));
   const commands = [].concat.apply([], commandGroups);
   return {
     fnDef: fn,
     wasmSource: commands.join("\n"),
-    newEnv: withDefines
+    newEnv: withDefines,
+    varDefs
   };
 }
 
@@ -61,9 +68,7 @@ function codeGenFunc(fn: FuncDef, env: GlobalEnv) : Array<string> {
   if(fn.params.length != 0) {
     paramList = fn.params.reduce((acc, curr) => `${acc} (param $${curr.name} i32)`, "");
   } 
-  if(fn.retType) {
-    paramList = `${paramList} (result i32)`;
-  }
+  paramList = `${paramList} (result i32)`;
   
   // Parse only vardefs
   let fnBody = "";
@@ -82,7 +87,38 @@ function codeGenFunc(fn: FuncDef, env: GlobalEnv) : Array<string> {
                 .map((s) => codeGen(s, env))
                 .flat()
                 .reduce((acc, curr) => `${acc}\n\t\t${curr}`, "");
+  const retExpr = codeGenExpr((fn.stmts[fn.stmts.length - 1] as any).expr, env)
+  fnBody += retExpr.join("\n");
   return [`(func $${fn.name} ${paramList}${fnBody})`]
+}
+
+function codeGenIf(stmt: any, env: GlobalEnv) : Array<string> {
+  const {ifStmts, condition, elifStmts, elifCondition, elseStmts} = stmt;
+  let code = `(if(result)(i32.eq ${codeGenExpr(condition, env).join("\n")} (i32.const 1))
+                (then ${ifStmts.map((s: any) => codeGen(s, env)).join("\n")})`
+  if(elifCondition || elseStmts) {
+    code += "(else"
+    if(elifCondition) {
+      code += `(if (result)(i32.eq ${codeGenExpr(elifCondition, env).join("\n")} (i32.const 1))
+                  (then ${elifStmts.map((s: any) => codeGen(s, env)).join("\n")})
+              `;
+    }
+    if(elseStmts && !elifCondition) {
+      // Just else
+      code += `(then ${elseStmts.map((s: any) => codeGen(s, env)).join("\n")})`
+    } else if(elseStmts && elifCondition) {
+      code += `(else ${elseStmts.map((s: any) => codeGen(s, env)).join("\n")})`
+    }
+    code += ")"
+    if(elifCondition) {
+      code += ")"
+    }
+  }
+
+  code += ")"
+
+  console.log(code);
+  return [code];
 }
 
 function codeGen(stmt: any, env: GlobalEnv) : Array<string> {
@@ -99,6 +135,8 @@ function codeGen(stmt: any, env: GlobalEnv) : Array<string> {
         let valStmts = codeGenExpr(stmt.value, env);
         return valStmts.concat([`(local.set $${stmt.name})`]);
       }
+    case "if":
+      return codeGenIf(stmt, env);
     case "print":
       var valStmts = codeGenExpr(stmt.value, env);
       return valStmts.concat([
@@ -106,12 +144,6 @@ function codeGen(stmt: any, env: GlobalEnv) : Array<string> {
       ]);      
     case "expr":
       return codeGenExpr(stmt.expr, env);
-    case "call":
-      const argStmts = stmt.args
-      .map((arg: Expr) => codeGenExpr(arg, env))
-      .concat([`call $${stmt.name}`])
-      .join("\n");
-      return argStmts;
     case "globals":
       var globalStmts : Array<string> = [];
       env.globals.forEach((pos, name) => {
@@ -134,6 +166,19 @@ function codeGen(stmt: any, env: GlobalEnv) : Array<string> {
   }
 }
 
+function getValue(l: Literal) {
+  switch(l.tag) {
+    case "Number":
+      return "(i32.const " + l.value + ")";
+    case "True":
+      return "(i32.const 1)"; // Just for now!  
+    case "False":
+      return "(i32.const 0)"; // Just for now!
+    case "None":
+      return "(i32.const 2)"; // Just for now!
+  }
+}
+
 function codeGenExpr(expr : Expr, env: GlobalEnv) : Array<string> {
   switch(expr.tag) {
     case "literal": {
@@ -148,6 +193,12 @@ function codeGenExpr(expr : Expr, env: GlobalEnv) : Array<string> {
           return ["(i32.const 2)"]; // Just for now!
       }
     }
+    case "call":
+      const argStmts = expr.args
+      .map((arg: Expr) => codeGenExpr(arg, env).join("\n"))
+      .concat([`call $${expr.name}`])
+      .join("\n");
+      return [argStmts];
     case "paren":
       return codeGenExpr(expr.expr, env);
     case "id":

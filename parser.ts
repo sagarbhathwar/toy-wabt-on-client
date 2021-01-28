@@ -94,7 +94,29 @@ export function traverseExpr(c: TreeCursor, s: string): Expr {
         op: unOp == "-" ? UniOp.Minus : UniOp.Not,
         right: arg
       }
-
+    case "CallExpression":
+      c.firstChild();
+      const callName = s.substring(c.from, c.to);
+      c.nextSibling(); // arglist
+      c.firstChild(); // "("
+      c.nextSibling();
+      const args = [];
+      while(s.substring(c.from, c.to) !== ")") {
+        args.push(traverseExpr(c, s));
+        c.nextSibling();
+        if(s.substring(c.from, c.to) === ",") {
+          c.nextSibling();
+        }
+      }
+      c.parent();
+      c.parent();
+      c.parent();
+      console.log(s.substring(c.from, c.to));
+      return {
+        tag: "call",
+        name: callName,
+        args
+      }
     default:
       throw new Error("Could not parse expr at " + c.from + " " + c.to + ": " + s.substring(c.from, c.to));
   }
@@ -162,43 +184,31 @@ export function parseExpr(c: TreeCursor, s: string): Stmt {
   c.firstChild();
   let childName = c.node.type.name;
   if((childName as any) === "CallExpression") { // Note(Joe): hacking around typescript here; it doesn't know about state
+    
     c.firstChild();
     const callName = s.substring(c.from, c.to);
-    if (callName === "globals") {
-      c.parent();
-      c.parent();
-      return {
-        tag: "globals"
-      };
-    } else if (callName === "print") {
-      c.nextSibling(); // go to arglist
-      c.firstChild(); // go into arglist
-      c.nextSibling(); // find single argument in arglist
-      const arg = traverseExpr(c, s);
-      c.parent(); // pop arglist
-      c.parent(); // pop expressionstmt
-      return {
-        tag: "print",
-        // LOL TODO: not this
-        value: arg
-      };
-    } else {
-      c.nextSibling(); // arglist
-      c.firstChild(); // "("
+    c.nextSibling(); // arglist
+    c.firstChild(); // "("
+    c.nextSibling();
+    const args = [];
+    while(s.substring(c.from, c.to) !== ")") {
+      args.push(traverseExpr(c, s));
       c.nextSibling();
-      const args = []
-      while(s.substring(c.from, c.to) !== ")") {
-        args.push(traverseExpr(c, s));
+      if(s.substring(c.from, c.to) === ",") {
         c.nextSibling();
-        if(s.substring(c.from, c.to) === ",") {
-          c.nextSibling();
-        }
       }
-      return {
+    }
+    c.parent();
+    c.parent();
+    c.parent();
+    console.log(s.substring(c.from, c.to));
+    return {
+      tag:"expr",
+      expr: {
         tag: "call",
         name: callName,
         args
-      }
+     }
     }
   } else {
     const expr = traverseExpr(c, s);
@@ -217,7 +227,6 @@ export function traverseFnStmt(c: TreeCursor, s: string): Stmt | VarDef {
     case "ExpressionStatement":
       return parseExpr(c, s);
     case "ReturnStatement":
-      console.log(s.substring(c.from, c.to))
       c.firstChild() // "return";
       c.nextSibling(); // Expr
       const expr = traverseExpr(c, s);
@@ -232,6 +241,7 @@ export function traverseFnStmt(c: TreeCursor, s: string): Stmt | VarDef {
 }
 
 export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | FuncDef {
+  console.log(c.node.type.name);
   switch(c.node.type.name){
     case "AssignStatement":
       return parseAssign(c, s);
@@ -260,51 +270,30 @@ export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | F
       const stmts: Array<Stmt | VarDef> = [];
       const varDefs: Array<Stmt | VarDef> = []; // Hack
 
-      // Loop over any var_def
-      let currStmt = traverseFnStmt(c, s);
-      while(currStmt.tag == "vardef") {
-        varDefs.push(currStmt);
-        c.nextSibling();
-        currStmt = traverseFnStmt(c, s)
-      }
-
-      // At this point, it's just statements
-      stmts.push(currStmt);
-      while(c.nextSibling()) {
-        stmts.push(traverseFnStmt(c, s));
-      }
-
-      c.parent();
-      c.nextSibling(); // Possible Return statement
-      const returnStmt = {
-        tag: "return",
-        expr: {}
-      };
-
-      if((c.node.type.name as any) === "ReturnStatement") {
-        c.firstChild(); // "return"
-        c.nextSibling() //  expr
-        if(c.from == c.to) {
-          returnStmt.expr = {
-            tag: "literal",
-            value: {tag: "None"}
+      do {
+        const stmt = traverseFnStmt(c, s);
+        if(stmt.tag === "vardef") {
+          varDefs.push(stmt)
+        } else {
+            stmts.push(stmt);
+            if(stmt.tag === "return") {
+            break
           }
         }
-        else { // Expr
-          const expr = traverseExpr(c, s);
-          returnStmt.expr = expr 
-        }
-        c.parent(); // Back to return
-        console.log(s.substring(c.from, c.to))
-      } else {
-        returnStmt.expr = {
-          tag: "literal",
-          value: {tag: "None"}
-        } 
+      } while(c.nextSibling());
+
+      if(stmts.length == 0 || stmts[stmts.length - 1].tag !== "return") {
+        stmts.push({
+          tag:"return",
+          expr:{
+            tag: "literal",
+            value: {tag: "None"}
+        }});
       }
-      stmts.push(returnStmt as any);
+
       c.parent(); // Back to function
       c.parent(); // Back to program
+
       return {
         tag: "func",
         params,
@@ -312,6 +301,67 @@ export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | F
         retType,
         varDefs,
         stmts
+      }
+    case "IfStatement":
+      c.firstChild(); // If
+      c.nextSibling(); // Condition
+      const condition = traverseExpr(c, s);
+      c.nextSibling(); // Body
+      c.firstChild(); // :
+      c.nextSibling(); // First statement
+      const ifStmts: any = []
+      let elifCondition;
+      let elifStmts: any = [];
+      let elseStmts: any = [];
+      do {
+        ifStmts.push(traverseProgramStmt(c, s))
+        console.log(ifStmts);
+      } while(c.nextSibling());
+      c.parent(); // Back to body
+      c.nextSibling();
+
+      if(s.substring(c.from, c.to) == "elif") { // "elif"
+        c.nextSibling(); // Condition
+        elifCondition = traverseExpr(c, s);
+        c.nextSibling(); // Body
+        c.firstChild(); // :
+        c.nextSibling(); // First statement
+        do {
+          elifStmts.push(traverseProgramStmt(c, s))
+        } while(c.nextSibling());
+        c.parent(); // Back to body
+        c.nextSibling();
+      }
+      
+      if(s.substring(c.from, c.to) == "else") { // "else"
+        c.nextSibling(); // Condition
+        c.nextSibling(); // Body
+        c.firstChild(); // :
+        c.nextSibling(); // First statement
+        do {
+          elseStmts.push(traverseProgramStmt(c, s))
+        } while(c.nextSibling());
+        c.parent(); // Back to body
+        c.nextSibling();
+
+      }
+      c.parent();
+      console.log(
+        {
+          tag: "if",
+          condition,
+          ifStmts,
+          elifCondition,
+          elifStmts,
+          elseStmts
+        })
+      return {
+        tag: "if",
+        condition,
+        ifStmts,
+        elifCondition,
+        elifStmts,
+        elseStmts
       }
     default:
       throw new Error("Could not parse stmt at " + c.node.from + " " + c.node.to + ": " + s.substring(c.from, c.to));

@@ -1,7 +1,6 @@
 export type ProgramStmt = 
 { tag: "vardef", value: VarDef }
 | {tag: "stmt", value: Stmt}
-| {tag: "fundef"}
 
 export type VarDef = {
   tag: "vardef",
@@ -24,36 +23,21 @@ export type FuncDef = {
   stmts: Array<VarDef | Stmt>
 }
 
-export type Stmt = {
-    tag: "define",
-    name: string,
-    value: Expr
-  }
-  | 
-  {
-    tag: "print",
-    value: Expr
-  }
-  |
-  {
-    tag: "expr",
-    expr: Expr
-  }
-  |
-  {
-    tag: "globals"
-  }
-  |
-  {
-    tag: "return",
-    expr: Expr
-  }
-  |
-  {
-    tag: "call",
-    name: string,
-    args: Array<Expr>
-  }
+export type Stmt = 
+    {tag: "define" ,name: string, value: Expr}
+  | {tag: "return", expr: Expr}
+  | {tag: "expr", expr: Expr}
+  | {
+      tag: "if",
+      condition: Expr,
+      ifStmts: Array<Stmt>,
+      elif?: Expr,
+      elifCondition?: Expr,
+      elifStmts?: Array<Stmt>,
+      elseStmts?: Array<Stmt>
+    }
+  | {tag: "print", value: Expr}
+  | {tag: "globals"}
 
 export type Expr = {
     tag: "op",
@@ -73,7 +57,13 @@ export type Expr = {
   }
   | {tag: "paren", expr: Expr}
   | {tag: "uniop", op: UniOp, right: Expr}
-  | {tag: "literal", value: Literal};
+  | {tag: "literal", value: Literal}
+  |
+  {
+    tag: "call",
+    name: string,
+    args: Array<Expr>
+  };
 
 export type Literal = 
   {tag: "None"} 
