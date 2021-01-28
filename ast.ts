@@ -35,6 +35,7 @@ export type Stmt =
       elifStmts?: Array<Stmt>,
       elseStmts?: Array<Stmt>
     }
+  | {tag: "while", condition: Expr, stmts: Array<Stmt>}
   | {tag: "print", value: Expr}
   | {tag: "globals"}
 

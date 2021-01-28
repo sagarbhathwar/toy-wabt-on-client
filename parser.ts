@@ -111,7 +111,6 @@ export function traverseExpr(c: TreeCursor, s: string): Expr {
       c.parent();
       c.parent();
       c.parent();
-      console.log(s.substring(c.from, c.to));
       return {
         tag: "call",
         name: callName,
@@ -202,7 +201,6 @@ export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | F
         c.parent();
         c.parent();
         c.parent();
-        console.log(s.substring(c.from, c.to));
         return {
           tag:"expr",
           expr: {
@@ -296,7 +294,6 @@ export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | F
       let elseStmts: any = [];
       do {
         ifStmts.push(traverseProgramStmt(c, s))
-        console.log(ifStmts);
       } while(c.nextSibling());
       c.parent(); // Back to body
       c.nextSibling();
@@ -327,6 +324,7 @@ export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | F
 
       }
       c.parent();
+      console.log(s.substring(c.from, c.to));
       return {
         tag: "if",
         condition,
@@ -334,6 +332,24 @@ export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | F
         elifCondition,
         elifStmts,
         elseStmts
+      }
+    case "WhileStatement":
+      c.firstChild();
+      c.nextSibling() // condition
+      const whileCondition = traverseExpr(c, s);
+      c.nextSibling(); // Body
+      c.firstChild(); // :
+      c.nextSibling(); // First statement
+      const body: any = []
+      do {
+        body.push(traverseProgramStmt(c, s))
+      } while(c.nextSibling());
+      c.parent();
+      c.parent(); // Back to body
+      return {
+        tag: "while",
+        condition: whileCondition,
+        stmts: body
       }
     default:
       throw new Error("Could not parse stmt at " + c.node.from + " " + c.node.to + ": " + s.substring(c.from, c.to));

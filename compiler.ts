@@ -117,8 +117,24 @@ function codeGenIf(stmt: any, env: GlobalEnv) : Array<string> {
 
   code += ")"
 
-  console.log(code);
   return [code];
+}
+
+function codeGenWhile(stmt: any, env: GlobalEnv) : Array<string> {
+  return [`
+      block $block
+        i32.const 1
+        ${codeGenExpr(stmt.condition, env).join("\n")}
+        i32.ne
+        br_if $block
+        loop $loop
+          ${stmt.stmts.map((s:any) => codeGen(s, env).join("\n")).join("\n")}
+          i32.const 1
+          ${codeGenExpr(stmt.condition, env).join("\n")}
+          i32.eq
+          br_if $loop
+        end
+      end`]
 }
 
 function codeGen(stmt: any, env: GlobalEnv) : Array<string> {
@@ -137,6 +153,8 @@ function codeGen(stmt: any, env: GlobalEnv) : Array<string> {
       }
     case "if":
       return codeGenIf(stmt, env);
+    case "while":
+      return codeGenWhile(stmt, env);
     case "print":
       var valStmts = codeGenExpr(stmt.value, env);
       return valStmts.concat([
