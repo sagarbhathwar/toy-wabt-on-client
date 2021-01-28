@@ -18,3 +18,10 @@ while x > 0:
   f(x)
   y = f(x)
   x = x - 1
+
+def g(x:int):
+  print(x)
+y:int = 10
+while y > 5:
+  g(y)
+  y = y - 1

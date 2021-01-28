@@ -2,7 +2,7 @@
   * Global variable
     x:int = 10
     The global variable is stored in the global environment(js memory) and accessed using "load" and "store" instructions
-    compiler.ts > codeGen > case "define" and compiler.ts > codeGenExpr > case "id"
+    compiler.ts > codeGen > case "assign" and compiler.ts > codeGenExpr > case "id"
   * One function with parameter
     def f(x:int):
       print(x)
@@ -18,3 +18,5 @@
 3. Added a "print" inside the while loop. "Logged from WASM" indefinitely. Web page freezes, only solution is to forcefully close it
 
 4. 
+
+![](path/to/your/screenshot.gif)

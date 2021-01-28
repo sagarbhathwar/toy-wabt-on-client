@@ -24,7 +24,7 @@ export type FuncDef = {
 }
 
 export type Stmt = 
-    {tag: "define" ,name: string, value: Expr}
+    {tag: "assign" ,name: string, value: Expr}
   | {tag: "return", expr: Expr}
   | {tag: "expr", expr: Expr}
   | {

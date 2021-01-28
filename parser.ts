@@ -110,7 +110,7 @@ export function traverseExpr(c: TreeCursor, s: string): Expr {
       }
       c.parent();
       c.parent();
-      c.parent();
+      console.log(s.substring(c.from, c.to))
       return {
         tag: "call",
         name: callName,
@@ -169,12 +169,12 @@ export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | F
           type: traveseType(type),
           value: traverseLiteral(value)
         }
-      } else { // Stmt ("define")
+      } else { // Stmt ("assign")
         c.nextSibling(); // go to value
         const value = traverseExpr(c, s);
         c.parent();
         return {
-          tag: "define",
+          tag: "assign",
           name: name,
           value: value
         }
@@ -200,6 +200,7 @@ export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | F
         c.parent();
         c.parent();
         c.parent();
+        console.log(s.substring(c.from, c.to))
         return {
           tag:"expr",
           expr: {
@@ -349,6 +350,11 @@ export function traverseProgramStmt(c: TreeCursor, s: string): Stmt | VarDef | F
         condition: whileCondition,
         stmts: body
       }
+    case "Script": // Possible REPL
+    c.firstChild()
+    const scriptStmt = traverseProgramStmt(c, s);
+    c.parent()
+    return scriptStmt;
     default:
       throw new Error("Could not parse stmt at " + c.node.from + " " + c.node.to + ": " + s.substring(c.from, c.to));
   }

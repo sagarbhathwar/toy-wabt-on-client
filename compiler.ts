@@ -7,26 +7,30 @@ import { parse } from "./parser";
 // Numbers are offsets into global memory
 export type GlobalEnv = {
   globals: Map<string, number>;
+  fnDef: string;
   offset: number;
 }
 
-export const emptyEnv = { globals: new Map(), offset: 0 };
+export const emptyEnv = {globals: new Map(), fnDef: [] as string[], offset: 0 };
 
-export function augmentEnv(env: GlobalEnv, stmts: Array<Stmt | VarDef>) : GlobalEnv {
+export function augmentEnv(env: GlobalEnv, stmts: Array<Stmt | VarDef | FuncDef>) : GlobalEnv {
   const newEnv = new Map(env.globals);
+  let fnDef: string = ""
   var newOffset = env.offset;
   stmts.forEach((s) => {
     switch(s.tag) {
-      case "define":
       case "vardef":
         newEnv.set(s.name, newOffset);
         newOffset += 1;
         break;
+      case "func":
+        fnDef += codeGenFunc(s, env).join("\n");
     }
   })
   return {
     globals: newEnv,
-    offset: newOffset
+    offset: newOffset,
+    fnDef
   }
 }
 
@@ -42,19 +46,19 @@ export function compile(source: string, env: GlobalEnv) : CompileResult {
   const withDefines = augmentEnv(env, ast);
   const fn = [].concat.apply([], ast.filter(stmt => stmt.tag as any === "func")
                 .map(stmt => codeGen(stmt, withDefines))).join("\n");
-  let varDefs = [].concat.apply([], ast.filter(stmt => stmt.tag as any == "vardef")
-                .map(stmt => `(local $${(stmt as any).name} i32)`));
-  varDefs = varDefs.concat(ast.filter(stmt => stmt.tag as any == "vardef")
-  .map(stmt => `${getValue((stmt as any).value)} (set_local $${(stmt as any).name})`))
-  .join("\n");      
-  const commandGroups = ast.filter(stmt => stmt.tag as any !== "func" && stmt.tag as any !== "vardef")
+  // let varDefs = [].concat.apply([], ast.filter(stmt => stmt.tag as any == "vardef")
+  //               .map(stmt => `(local $${(stmt as any).name} i32)`));
+  // varDefs = varDefs.concat(ast.filter(stmt => stmt.tag as any == "vardef")
+  // .map(stmt => `${getValue((stmt as any).value)} (set_local $${(stmt as any).name})`))
+  // .join("\n");      
+  const commandGroups = ast.filter(stmt => stmt.tag as any !== "func")
                            .map((stmt) => codeGen(stmt, withDefines));
   const commands = [].concat.apply([], commandGroups);
   return {
-    fnDef: fn,
+    fnDef: fn + env.fnDef,
     wasmSource: commands.join("\n"),
     newEnv: withDefines,
-    varDefs
+    varDefs: [] as any
   };
 }
 
@@ -137,19 +141,45 @@ function codeGenWhile(stmt: any, env: GlobalEnv) : Array<string> {
       end`]
 }
 
+function codeGenLiteral(literal: Literal) {
+  switch(literal.tag) {
+    case "Number":
+      return ["(i32.const " + literal.value + ")"];
+    case "True":
+      return ["(i32.const 1)"]; // Just for now!  
+    case "False":
+      return ["(i32.const 0)"]; // Just for now!
+    case "None":
+      return ["(i32.const 2)"]; // Just for now!
+  }
+}
+
 function codeGen(stmt: any, env: GlobalEnv) : Array<string> {
   switch(stmt.tag) {
     case "func":
       // Generate code for function
       return codeGenFunc(stmt, env);
-    case "define":
-      if(env.globals.get(stmt.name)) {
+    case "assign":
+      if(env.globals.get(stmt.name) !== undefined) { // Global scope
         const locationToStore = [`(i32.const ${envLookup(env, stmt.name)}) ;; ${stmt.name}`];
         var valStmts = codeGenExpr(stmt.value, env);
         return locationToStore.concat(valStmts).concat([`(i32.store)`]);
-      } else {
+      } else { // Local scope or error if variable undefined
         let valStmts = codeGenExpr(stmt.value, env);
         return valStmts.concat([`(local.set $${stmt.name})`]);
+      }
+    
+    case "vardef":
+      if(env.globals.get(stmt.name) !== undefined) { // Global scope
+        console.log(stmt);
+        const locationToStore = [`(i32.const ${envLookup(env, stmt.name)}) ;; ${stmt.name}`];
+        var valStmts = codeGenLiteral(stmt.value);
+        return locationToStore.concat(valStmts).concat([`(i32.store)`]);
+      } else { // Local scope
+        const init = [`(local $${stmt.name} i32)`];
+        const exprCode = codeGenExpr({tag: "literal", value: stmt.value}, env);
+        const set = [`(set_local $${stmt.name})`];
+        return init.concat(exprCode).concat(set);
       }
     case "return":
       return codeGenExpr(stmt.expr, env);
@@ -175,12 +205,6 @@ function codeGen(stmt: any, env: GlobalEnv) : Array<string> {
         );
       });
       return globalStmts;
-    case "vardef":
-      // TODO: 1) Store type 2) Check for existence
-      const init = [`(local $${stmt.name} i32)`];
-      const exprCode = codeGenExpr({tag: "literal", value: stmt.value}, env);
-      const set = [`(set_local $${stmt.name})`];
-      return init.concat(exprCode).concat(set);
     default:
       return []; 
   }
@@ -222,7 +246,7 @@ function codeGenExpr(expr : Expr, env: GlobalEnv) : Array<string> {
     case "paren":
       return codeGenExpr(expr.expr, env);
     case "id":
-      if(env.globals.get(expr.name)) {
+      if(env.globals.get(expr.name) !== undefined) {
         return [`(i32.const ${envLookup(env, expr.name)})`, `i32.load `]
       } else {
         return [`(get_local $${expr.name})`]
@@ -248,6 +272,11 @@ function codeGenUniOp(op: UniOp, right: Expr, env: GlobalEnv): Array<string> {
 }
 
 function codeGenOp(op: Op, left: Expr, right: Expr, env: GlobalEnv): Array<string> {
+  if(left.tag === "literal" && right.tag === "literal") {
+    if(left.value.tag !== right.value.tag) {
+      throw Error(`Cannot apply operator '${op}' on types '${left.value.tag}' and '${right.value.tag}' `)
+    }
+  }
   var leftStmts = codeGenExpr(left, env);
   var rightStmts = codeGenExpr(right, env);
 
