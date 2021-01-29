@@ -88,9 +88,8 @@ function codeGenFunc(fn: FuncDef, env: GlobalEnv) : Array<string> {
   
   paramList = paramList.trim();
   fnBody += fn.stmts.slice(0, -1)
-                .map((s) => codeGen(s, env))
-                .flat()
-                .reduce((acc, curr) => `${acc}\n\t\t${curr}`, "");
+                .map((s) => codeGen(s, env).join("\n"))
+                .reduce((acc, curr) => `${acc}\n\t\t${curr}`, "") + "\n";
   const retExpr = codeGenExpr((fn.stmts[fn.stmts.length - 1] as any).expr, env)
   fnBody += retExpr.join("\n");
   return [`(func $${fn.name} ${paramList}${fnBody})`]
@@ -171,7 +170,6 @@ function codeGen(stmt: any, env: GlobalEnv) : Array<string> {
     
     case "vardef":
       if(env.globals.get(stmt.name) !== undefined) { // Global scope
-        console.log(stmt);
         const locationToStore = [`(i32.const ${envLookup(env, stmt.name)}) ;; ${stmt.name}`];
         var valStmts = codeGenLiteral(stmt.value);
         return locationToStore.concat(valStmts).concat([`(i32.store)`]);
@@ -247,7 +245,7 @@ function codeGenExpr(expr : Expr, env: GlobalEnv) : Array<string> {
       return codeGenExpr(expr.expr, env);
     case "id":
       if(env.globals.get(expr.name) !== undefined) {
-        return [`(i32.const ${envLookup(env, expr.name)})`, `i32.load `]
+        return [`(i32.const ${envLookup(env, expr.name)})`, ` (i32.load) `]
       } else {
         return [`(get_local $${expr.name})`]
       }
